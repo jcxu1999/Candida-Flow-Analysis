@@ -12,8 +12,8 @@ library(class)
 # there are 21 single color controls and one mixed file to be analyzed.
 # ---------------------------------------------------------------------
 ## Required info to be filled
-setwd("E:/Brown/Lab/Thesis/Data/double color/data")
-sample_to_analysis = "16mix_ad"
+setwd("//path_to_data")
+sample_to_analysis = "21mix_equal"
 
 fcs_files <- list.files(pattern = "\\.fcs$", full.names = FALSE)
 
@@ -43,7 +43,7 @@ head(combined_df)
 # groups
 # ---------------------------------------------------------------------
 # Downsampling
-set.seed(1)
+set.seed(10)
 df_subset <- combined_df %>%
   dplyr::group_by(Sample_ID) %>%
   dplyr::mutate(n_cells = n()) %>%
@@ -61,7 +61,7 @@ print("Channels to be analyzed:")
 print(markers_to_use)
 
 # run UMAP
-set.seed(1)
+set.seed(10)
 umap_out <- umap(df_subset[, markers_to_use], 
                  n_neighbors = 30, min_dist = 0.2)
 df_subset$UMAP_1 <- umap_out[, 1]
@@ -91,7 +91,15 @@ df_labels <- df_labels %>% left_join(sample_map, by = "Sample_ID")
 ggplot(df_controls, aes(x = UMAP_1, y = UMAP_2, color = Sample_ID)) +
   geom_point(size = 0.5, alpha = 0.6) +
   theme_bw() +
-  guides(color = guide_legend(override.aes = list(size = 3)))
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 16),
+    legend.text = element_text(size = 12)
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 3), ncol = 2))
 # Figure with detailed labels
 ggplot(df_controls, aes(x = UMAP_1, y = UMAP_2, color = Legend_Label)) +
   geom_point(size = 0.5, alpha = 0.6) +
@@ -103,10 +111,18 @@ ggplot(df_controls, aes(x = UMAP_1, y = UMAP_2, color = Legend_Label)) +
     size = 4
   ) +
   theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 16),
+    legend.text = element_text(size = 12)
+  ) +
   guides(color = guide_legend(
     title = "Groups",
     override.aes = list(size = 4, alpha = 1),
-    ncol = 1 
+    ncol = 2
   )) +
   scale_color_discrete()
 
@@ -169,6 +185,14 @@ test_labels <- test_df %>%
 ggplot(test_df, aes(x = UMAP_1, y = UMAP_2, color = Predicted_Identity)) +
   geom_point(size = 0.5, alpha = 0.6) +
   theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 16),
+    legend.text = element_text(size = 12)
+  ) +
   guides(color = guide_legend(override.aes = list(size = 3))) +
   labs(title = "Predicted Identities projected on sample UMAP",
        color = "Predicted Type")
@@ -184,10 +208,18 @@ ggplot(test_df, aes(x = UMAP_1, y = UMAP_2, color = Legend_Label)) +
     check_overlap = TRUE
   ) +
   theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 16),
+    legend.text = element_text(size = 12)
+  ) +
   guides(color = guide_legend(
     title = "Predicted Type",
     override.aes = list(size = 4, alpha = 1),
-    ncol = 1
+    ncol = 2
   )) +
   labs(
     title = "Predicted Identities projected on sample UMAP",
