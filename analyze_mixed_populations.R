@@ -6,6 +6,7 @@ library(dplyr)
 library(uwot)
 library(FlowSOM)
 library(class)
+library(caret)
 
 # ---------------------------------------------------------------------
 # 1. Get all the .fcs files in the working directory. In the example, 
@@ -126,9 +127,92 @@ ggplot(df_controls, aes(x = UMAP_1, y = UMAP_2, color = Legend_Label)) +
   )) +
   scale_color_discrete()
 
+# ---------------------------------------------------------------------
+# 4. Model Validation, Parameter Optimization, and Cross-Validation
+# ---------------------------------------------------------------------
+set.seed(123)
+df_controls_split <- df_subset %>%
+  dplyr::filter(Sample_ID != sample_to_analysis) %>%
+  dplyr::group_by(Sample_ID) %>%
+  dplyr::mutate(split = sample(c("train", "test"), 
+                               size = n(), replace = TRUE, 
+                               prob = c(0.7, 0.3))) %>%
+  dplyr::ungroup()
+
+train_df <- df_controls_split %>% dplyr::filter(split == "train")
+test_df_internal  <- df_controls_split %>% dplyr::filter(split == "test")
+
+train_matrix <- train_df[, markers_to_use]
+test_matrix_internal  <- test_df_internal[, markers_to_use]
+
+train_labels <- factor(train_df$Sample_ID)
+test_labels_internal <- factor(test_df_internal$Sample_ID, levels = levels(train_labels))
+
+# cross-validation
+k_values <- c(5, 10, 15, 20, 25, 30)
+cv_results <- data.frame(k = k_values, accuracy = NA)
+
+set.seed(123)
+folds <- createFolds(train_labels, k = 5, list = TRUE)
+
+for (i in seq_along(k_values)) {
+  k_val <- k_values[i]
+  fold_acc <- c()
+  for (fold in folds) {
+    cv_train_x <- train_matrix[-fold, ]
+    cv_train_y <- train_labels[-fold]
+    cv_test_x  <- train_matrix[fold, ]
+    cv_test_y  <- train_labels[fold]
+    
+    pred <- knn(train = cv_train_x, test = cv_test_x, cl = cv_train_y, k = k_val)
+    fold_acc <- c(fold_acc, mean(pred == cv_test_y))
+  }
+  cv_results$accuracy[i] <- mean(fold_acc)
+}
+
+print(cv_results)
+best_k <- cv_results$k[which.max(cv_results$accuracy)]
+print(paste("Optimal k:", best_k))
+
+ggplot(cv_results, aes(x = k, y = accuracy)) +
+  geom_line() + geom_point(size = 3) +
+  theme_bw() +
+  labs(title = "5-fold CV Accuracy vs. k",
+       x = "k (number of neighbors)", y = "Mean CV Accuracy") +
+  scale_y_continuous(limits = c(0.99, 1))
+
+# Confusion matrix
+set.seed(123)
+pred_internal <- knn(train = train_matrix, test = test_matrix_internal, 
+                     cl = train_labels, k = best_k)
+
+cm <- confusionMatrix(pred_internal, test_labels_internal)
+
+# Overall accuracy
+print(cm$overall["Accuracy"])
+
+# Accuracy for each color population
+print(cm$byClass[, c("Sensitivity", "Specificity", "Precision", "F1", "Balanced Accuracy")])
+
+# Confusion matrix
+cm_df <- cm$table
+cm_prop <- as.data.frame(prop.table(cm_df, margin = 2))
+cm_counts <- as.data.frame(cm_df)
+cm_data <- merge(cm_counts, cm_prop, by = c("Prediction", "Reference"))
+cm_data$Percentage <- cm_data$Freq.y * 100  # Covert to 0-100%
+ggplot(cm_data, aes(x = Reference, y = Prediction, fill = Percentage)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%.1f", Percentage)), size = 3) +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+        axis.text.y = element_text(size = 8)) +
+  labs(title = paste0("Confusion Matrix (k = ", best_k, ")"),
+       subtitle = paste("Overall Accuracy:", round(cm$overall["Accuracy"] * 100, 2), "%"),
+       x = "True Population", y = "Predicted Population")
 
 # ---------------------------------------------------------------------
-# 4. KNN for mix separation
+# 5. KNN for mix separation
 # ---------------------------------------------------------------------
 train_df <- df_subset %>% dplyr::filter(Sample_ID != sample_to_analysis)
 test_df <- df_subset %>% dplyr::filter(Sample_ID == sample_to_analysis)
@@ -144,7 +228,7 @@ set.seed(123)
 predicted_labels <- knn(train = train_matrix, 
                         test  = test_matrix, 
                         cl    = train_labels, 
-                        k     = 15)
+                        k     = best_k)
 
 test_df$Predicted_Identity <- predicted_labels
 head(test_df[, c("Sample_ID", "Predicted_Identity")])
@@ -164,12 +248,12 @@ ggplot(composition_stats, aes(x = reorder(Predicted_Identity, Percentage), y = P
   coord_flip() +
   theme_bw() +
   labs(title = "Composition of the 14-mix Sample",
-       subtitle = "Based on kNN classification (k=15)",
+       subtitle = paste0("Based on kNN classification (k=", best_k, ")"),
        x = "Cell Type",
        y = "Percentage (%)")
 
 # ---------------------------------------------------------------------
-# 5. Plotting for the mixed sample
+# 6. Plotting for the mixed sample
 # ---------------------------------------------------------------------
 test_df <- test_df %>%
   left_join(sample_map, by = c("Predicted_Identity" = "Sample_ID"))
